@@ -1,7 +1,7 @@
 <?php
 // controllers/CatalogoController.php
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../models/Producto.php';
+require_once __DIR__ . '/../models/producto.php';
 
 $db = getConnection();
 $db->exec("
