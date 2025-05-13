@@ -4,6 +4,14 @@
 ?>
 
 <div class="container py-4">
+
+  <!-- Enlace al carrito -->
+  <div class="d-flex justify-content-end mb-3">
+    <a href="/carrito" class="btn btn-primary">
+      <i class="bi bi-cart-fill"></i> Ver carrito
+    </a>
+  </div>
+
   <h1>Catálogo de Productos</h1>
 
   <?php foreach ($por_categoria as $categoria => $lista): ?>
@@ -16,6 +24,7 @@
           <th>Descripción</th>
           <th>Precio</th>
           <th>Stock</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -24,9 +33,7 @@
             <td class="text-center" style="width:120px;">
               <?php if ($item->imagen_url): ?>
                 <?php 
-                  // Usar la ruta tal como está en la base de datos, pero normalizando barras
                   $rutaImagen = str_replace('\\', '/', $item->imagen_url);
-                  // Si no comienza con barra, añadirla
                   if (substr($rutaImagen, 0, 1) !== '/') {
                     $rutaImagen = '/' . $rutaImagen;
                   }
@@ -36,10 +43,6 @@
                   alt="<?= htmlspecialchars($item->nombre) ?>"
                   style="width:100px; height:100px; object-fit:cover; display:block; margin:auto; border-radius:4px;"
                 >
-                <!-- Debug: mostramos la ruta generada -->
-                <div style="text-align:center; font-size:.75rem; color:#6c757d; margin-top:.25rem;">
-                  <?= htmlspecialchars($rutaImagen) ?>
-                </div>
               <?php else: ?>
                 <div style="width:100px; height:100px; background:#e9ecef; display:flex; align-items:center; justify-content:center; color:#6c757d; font-size:.8rem; margin:auto; border-radius:4px;">
                   Sin imagen
@@ -50,6 +53,16 @@
             <td><?= nl2br(htmlspecialchars($item->descripcion ?? '—')) ?></td>
             <td>€ <?= number_format($item->precio, 2, ',', '.') ?></td>
             <td><?= $item->stock ?></td>
+            <td style="width:150px;">
+              <!-- Formulario para añadir al carrito -->
+              <form action="/agregar-al-carrito" method="post" class="d-flex">
+                <input type="hidden" name="producto_id" value="<?= (int)$item->id_producto ?>">
+                <input type="hidden" name="cantidad" value="1">
+                <button type="submit" class="btn btn-sm btn-success flex-grow-1">
+                  <i class="bi bi-cart-plus"></i> Agregar
+                </button>
+              </form>
+            </td>
           </tr>
         <?php endforeach; ?>
       </tbody>

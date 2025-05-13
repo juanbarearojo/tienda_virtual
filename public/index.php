@@ -1,9 +1,10 @@
 <?php
-// public/index.php
+// Actualización del public/index.php para incluir las rutas del carrito
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../controllers/AuthController.php';
 require_once __DIR__ . '/../controllers/CatalogoController.php';
+require_once __DIR__ . '/../controllers/CarritoController.php';
 
 $db = getConnection();   // usa la función de config/database.php
 session_start();
@@ -31,6 +32,42 @@ switch ($uri) {
 
     case '/logout':
         (new AuthController($db))->logout();
+        break;
+        
+    // Rutas del carrito
+    case '/carrito':
+        $carritoController = new CarritoController($db);
+        $carritoController->index();
+        break;
+        
+    case '/agregar-al-carrito':
+        $carritoController = new CarritoController($db);
+        $carritoController->addToCart();
+        break;
+        
+    case '/actualizar-carrito':
+        $carritoController = new CarritoController($db);
+        $carritoController->updateCartItem();
+        break;
+        
+    case '/eliminar-del-carrito':
+        $carritoController = new CarritoController($db);
+        $carritoController->removeFromCart();
+        break;
+        
+    case '/vaciar-carrito':
+        $carritoController = new CarritoController($db);
+        $carritoController->emptyCart();
+        break;
+        
+    case '/checkout':
+        $carritoController = new CarritoController($db);
+        $carritoController->checkout();
+        break;
+        
+    case '/confirmar-checkout':
+        $carritoController = new CarritoController($db);
+        $carritoController->confirmCheckout();
         break;
 
     default:
