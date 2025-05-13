@@ -31,13 +31,14 @@ try {
     echo "<p style='color:green;'>✔ Tabla Usuarios lista.</p>";
 
     $db->exec(
-        "CREATE TABLE IF NOT EXISTS Productos (
+            "CREATE TABLE IF NOT EXISTS Productos (
             id_producto INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL,
             descripcion TEXT,
             precio REAL NOT NULL,
             stock INTEGER NOT NULL DEFAULT 0,
-            categoria TEXT
+            categoria TEXT,
+            imagen_url TEXT
         );"
     );
     echo "<p style='color:green;'>✔ Tabla Productos lista.</p>";

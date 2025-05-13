@@ -1,21 +1,46 @@
 <?php
 // models/Producto.php
-class Producto {
-    public int $id;
-    public string $nombre;
-    public string $imagen;
-    public float $precio;
-    public string $categoria;
 
+class Producto {
+    public int     $id_producto;
+    public string  $nombre;
+    public ?string $descripcion;
+    public float   $precio;
+    public int     $stock;
+    public ?string $categoria;
+    public ?string $imagen_url;
+
+    // Método genérico que devuelve TODOS los productos como objetos
     public static function all(PDO $db): array {
-        $stmt = $db->query("SELECT * FROM productos");
-        return $stmt->fetchAll(PDO::FETCH_CLASS, self::class);
+        $sql = "
+            SELECT
+              id_producto,
+              nombre,
+              descripcion,
+              precio,
+              stock,
+              categoria,
+              imagen_url
+            FROM Productos
+        ";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        // Indicamos que devuelva objetos Producto
+        $stmt->setFetchMode(
+          PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE,
+          self::class
+        );
+        return $stmt->fetchAll(); // ahora devuelve Producto[]
     }
 
-    public static function seedIfEmpty(PDO $db): void {
-        $count = $db->query("SELECT COUNT(*) FROM productos")->fetchColumn();
-        if ($count == 0) {
-            // ... inserción de datos de ejemplo ...
+    // Método que agrupa por categoría
+    public static function allGroupedByCategoria(PDO $db): array {
+        $productos = self::all($db);
+        $porCategoria = [];
+        foreach ($productos as $p) {
+            $cat = $p->categoria ?: 'Sin categoría';
+            $porCategoria[$cat][] = $p;
         }
+        return $porCategoria;
     }
 }
