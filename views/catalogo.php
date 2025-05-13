@@ -1,6 +1,6 @@
 <?php
 // views/catalogo.php
-// No need to include header.php here as it's included in the controller
+// Variables disponibles: $por_categoria, $categorias, $term, $category
 ?>
 
 <div class="container py-4">
@@ -12,7 +12,43 @@
     </a>
   </div>
 
+  <!-- Formulario de búsqueda y filtro -->
+  <form method="get" class="row g-2 mb-4 align-items-end">
+    <div class="col-sm">
+      <label for="term" class="form-label">Buscar por nombre</label>
+      <input
+        type="text"
+        id="term"
+        name="term"
+        value="<?= htmlspecialchars($term ?? '') ?>"
+        class="form-control"
+        placeholder="Ej. ‘camiseta’"
+      >
+    </div>
+    <div class="col-sm">
+      <label for="category" class="form-label">Filtrar categoría</label>
+      <select id="category" name="category" class="form-select">
+        <option value="">Todas</option>
+        <?php foreach ($categorias as $catOption): ?>
+          <option
+            value="<?= htmlspecialchars($catOption) ?>"
+            <?= ($catOption === ($category ?? '')) ? 'selected' : '' ?>
+          >
+            <?= htmlspecialchars($catOption) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-sm-auto">
+      <button type="submit" class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
+
   <h1>Catálogo de Productos</h1>
+
+  <?php if (empty($por_categoria)): ?>
+    <p class="text-muted">No se han encontrado productos para esos criterios.</p>
+  <?php endif; ?>
 
   <?php foreach ($por_categoria as $categoria => $lista): ?>
     <h2><?= htmlspecialchars($categoria) ?></h2>
@@ -32,14 +68,9 @@
           <tr class="align-middle">
             <td class="text-center" style="width:120px;">
               <?php if ($item->imagen_url): ?>
-                <?php 
-                  $rutaImagen = str_replace('\\', '/', $item->imagen_url);
-                  if (substr($rutaImagen, 0, 1) !== '/') {
-                    $rutaImagen = '/' . $rutaImagen;
-                  }
-                ?>
+                <?php $ruta = $item->getRutaImagen(); ?>
                 <img
-                  src="<?= htmlspecialchars($rutaImagen) ?>"
+                  src="<?= htmlspecialchars($ruta) ?>"
                   alt="<?= htmlspecialchars($item->nombre) ?>"
                   style="width:100px; height:100px; object-fit:cover; display:block; margin:auto; border-radius:4px;"
                 >
@@ -51,10 +82,9 @@
             </td>
             <td><?= htmlspecialchars($item->nombre) ?></td>
             <td><?= nl2br(htmlspecialchars($item->descripcion ?? '—')) ?></td>
-            <td>€ <?= number_format($item->precio, 2, ',', '.') ?></td>
+            <td>€ <?= $item->getPrecioFormateado() ?></td>
             <td><?= $item->stock ?></td>
             <td style="width:150px;">
-              <!-- Formulario para añadir al carrito -->
               <form action="/agregar-al-carrito" method="post" class="d-flex">
                 <input type="hidden" name="producto_id" value="<?= (int)$item->id_producto ?>">
                 <input type="hidden" name="cantidad" value="1">
@@ -68,6 +98,5 @@
       </tbody>
     </table>
   <?php endforeach; ?>
-</div>
 
-<?php // No need to include footer.php here as it's included in the controller ?>
+</div>
