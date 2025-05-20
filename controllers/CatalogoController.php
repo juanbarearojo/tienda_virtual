@@ -27,6 +27,8 @@ class CatalogoController {
         $categorias = Producto::getAllCategories($this->db);
 
         // Renderizar la vista
+        include __DIR__ . '/../views/header.php';
         include __DIR__ . '/../views/catalogo.php';
+        include __DIR__ . '/../views/footer.php';
     }
 }
