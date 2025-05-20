@@ -12,229 +12,189 @@ class CarritoController {
         $this->db = $db;
     }
 
+    /**
+     * Helper para mostrar un pop-up y redirigir atrás
+     * Usado solo en addToCart()
+     */
+    private function popupResponse(array $data, int $statusCode = 200) {
+        http_response_code($statusCode);
+        $_SESSION['popup'] = [
+            'tipo'    => $data['success'] ? 'success' : 'error',
+            'mensaje' => $data['message'] ?? $data['error'] ?? 'Operación completada.'
+        ];
+        $referer = $_SERVER['HTTP_REFERER'] ?? '/';
+        header("Location: $referer");
+        exit;
+    }
+
+    /**
+     * Helper para enviar respuestas JSON
+     */
+    private function jsonResponse(array $data, int $statusCode = 200) {
+        http_response_code($statusCode);
+        header('Content-Type: application/json');
+        echo json_encode($data);
+        exit;
+    }
+
     // Mostrar el carrito del usuario
     public function index() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             header('Location: /login');
             exit;
         }
-        
-        $userId = $_SESSION['user_id'];
+
+        $userId  = $_SESSION['user_id'];
         $carrito = Carrito::getActive($this->db, $userId);
-        $items = $carrito->getItems($this->db);
-        $total = $carrito->getTotal($this->db);
-        
-        // Incluir vista
+        $items   = $carrito->getItems($this->db);
+        $total   = $carrito->getTotal($this->db);
+
         include __DIR__ . '/../views/header.php';
         include __DIR__ . '/../views/carrito.php';
         include __DIR__ . '/../views/footer.php';
     }
-    
-    // Añadir un producto al carrito
+
+    // Añadir un producto al carrito (pop-up en vez de JSON)
     public function addToCart() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
-            $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
+            $this->popupResponse(['success' => false, 'error' => 'No autorizado'], 401);
         }
-        
-        // Verificar datos de entrada
+
         if (empty($_POST['producto_id']) || !isset($_POST['cantidad'])) {
-            $this->jsonResponse(['success' => false, 'error' => 'Datos incompletos'], 400);
-            return;
+            $this->popupResponse(['success' => false, 'error' => 'Datos incompletos'], 400);
         }
-        
-        $productoId = (int)$_POST['producto_id'];
-        $cantidad = (int)$_POST['cantidad'];
-        
+
+        $productoId = (int) $_POST['producto_id'];
+        $cantidad   = (int) $_POST['cantidad'];
         if ($cantidad <= 0) {
-            $this->jsonResponse(['success' => false, 'error' => 'Cantidad inválida'], 400);
-            return;
+            $this->popupResponse(['success' => false, 'error' => 'Cantidad inválida'], 400);
         }
-        
-        // Verificar que el producto existe y tiene stock suficiente
-        $stmt = $this->db->prepare("SELECT id_producto, stock FROM Productos WHERE id_producto = :id");
+
+        // Verificar existencia y stock
+        $stmt = $this->db->prepare("SELECT stock FROM Productos WHERE id_producto = :id");
         $stmt->execute(['id' => $productoId]);
-        $producto = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$producto) {
-            $this->jsonResponse(['success' => false, 'error' => 'Producto no encontrado'], 404);
-            return;
+        $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$prod) {
+            $this->popupResponse(['success' => false, 'error' => 'Producto no encontrado'], 404);
         }
-        
-        if ($producto['stock'] < $cantidad) {
-            $this->jsonResponse([
-                'success' => false, 
-                'error' => 'No hay suficiente stock disponible',
-                'stockDisponible' => $producto['stock']
+        if ($prod['stock'] < $cantidad) {
+            $this->popupResponse([
+                'success'         => false,
+                'error'           => 'No hay suficiente stock disponible',
+                'stockDisponible' => $prod['stock']
             ], 400);
-            return;
         }
-        
-        // Obtener carrito activo del usuario
-        $userId = $_SESSION['user_id'];
-        $carrito = Carrito::getActive($this->db, $userId);
-        
-        // Añadir producto al carrito
+
+        // Añadir al carrito
+        $carrito = Carrito::getActive($this->db, $_SESSION['user_id']);
         $success = ItemCarrito::add($this->db, $carrito->id_carrito, $productoId, $cantidad);
-        
+
         if ($success) {
-            // Obtener datos actualizados del carrito
-            $itemCount = $carrito->getItemCount($this->db);
-            $total = $carrito->getTotal($this->db);
-            
-            $this->jsonResponse([
+            $this->popupResponse([
                 'success' => true,
-                'message' => 'Producto añadido al carrito',
-                'itemCount' => $itemCount,
-                'total' => $total
+                'message' => '¡Producto añadido al carrito!'
             ]);
         } else {
-            $this->jsonResponse(['success' => false, 'error' => 'Error al añadir producto'], 500);
+            $this->popupResponse(['success' => false, 'error' => 'Error al añadir producto'], 500);
         }
     }
-    
-    // Actualizar cantidad de un producto en el carrito
+
+    // Actualizar cantidad de un producto en el carrito (JSON)
     public function updateCartItem() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
         }
-        
-        // Verificar datos de entrada
         if (empty($_POST['item_id']) || !isset($_POST['cantidad'])) {
             $this->jsonResponse(['success' => false, 'error' => 'Datos incompletos'], 400);
-            return;
         }
-        
-        $itemId = (int)$_POST['item_id'];
-        $cantidad = (int)$_POST['cantidad'];
-        
-        // Obtener el item
-        $item = ItemCarrito::get($this->db, $itemId);
-        
+
+        $itemId   = (int) $_POST['item_id'];
+        $cantidad = (int) $_POST['cantidad'];
+        $item     = ItemCarrito::get($this->db, $itemId);
+
         if (!$item) {
             $this->jsonResponse(['success' => false, 'error' => 'Item no encontrado'], 404);
-            return;
         }
-        
-        // Verificar que el item pertenece al carrito del usuario
-        $userId = $_SESSION['user_id'];
-        $carrito = Carrito::getActive($this->db, $userId);
-        
+        $carrito = Carrito::getActive($this->db, $_SESSION['user_id']);
         if ($item->id_carrito !== $carrito->id_carrito) {
             $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
         }
-        
-        // Si la cantidad es 0, eliminar el item
+
         if ($cantidad <= 0) {
             $success = ItemCarrito::remove($this->db, $itemId);
         } else {
-            // Verificar stock disponible
             $stmt = $this->db->prepare("SELECT stock FROM Productos WHERE id_producto = :id");
             $stmt->execute(['id' => $item->id_producto]);
-            $producto = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($producto && $producto['stock'] < $cantidad) {
+            $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($prod && $prod['stock'] < $cantidad) {
                 $this->jsonResponse([
-                    'success' => false, 
-                    'error' => 'No hay suficiente stock disponible',
-                    'stockDisponible' => $producto['stock']
+                    'success'         => false,
+                    'error'           => 'No hay suficiente stock disponible',
+                    'stockDisponible' => $prod['stock']
                 ], 400);
-                return;
             }
-            
-            // Actualizar cantidad
             $success = ItemCarrito::updateQuantity($this->db, $itemId, $cantidad);
         }
-        
+
         if ($success) {
-            // Obtener datos actualizados del carrito
             $itemCount = $carrito->getItemCount($this->db);
-            $total = $carrito->getTotal($this->db);
-            $items = $carrito->getItems($this->db);
-            
+            $total     = $carrito->getTotal($this->db);
+            $items     = $carrito->getItems($this->db);
             $this->jsonResponse([
-                'success' => true,
-                'message' => 'Carrito actualizado',
+                'success'   => true,
+                'message'   => 'Carrito actualizado',
                 'itemCount' => $itemCount,
-                'total' => $total,
-                'items' => $items
+                'total'     => $total,
+                'items'     => $items
             ]);
         } else {
             $this->jsonResponse(['success' => false, 'error' => 'Error al actualizar carrito'], 500);
         }
     }
-    
-    // Eliminar un producto del carrito
+
+    // Eliminar un producto del carrito (JSON)
     public function removeFromCart() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
         }
-        
-        // Verificar datos de entrada
         if (empty($_POST['item_id'])) {
             $this->jsonResponse(['success' => false, 'error' => 'Datos incompletos'], 400);
-            return;
         }
-        
-        $itemId = (int)$_POST['item_id'];
-        
-        // Obtener el item
-        $item = ItemCarrito::get($this->db, $itemId);
-        
+
+        $itemId = (int) $_POST['item_id'];
+        $item   = ItemCarrito::get($this->db, $itemId);
         if (!$item) {
             $this->jsonResponse(['success' => false, 'error' => 'Item no encontrado'], 404);
-            return;
         }
-        
-        // Verificar que el item pertenece al carrito del usuario
-        $userId = $_SESSION['user_id'];
-        $carrito = Carrito::getActive($this->db, $userId);
-        
+
+        $carrito = Carrito::getActive($this->db, $_SESSION['user_id']);
         if ($item->id_carrito !== $carrito->id_carrito) {
             $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
         }
-        
-        // Eliminar item
+
         $success = ItemCarrito::remove($this->db, $itemId);
-        
         if ($success) {
-            // Obtener datos actualizados del carrito
-            $itemCount = $carrito->getItemCount($this->db);
-            $total = $carrito->getTotal($this->db);
-            
             $this->jsonResponse([
-                'success' => true,
-                'message' => 'Producto eliminado del carrito',
-                'itemCount' => $itemCount,
-                'total' => $total
+                'success'   => true,
+                'message'   => 'Producto eliminado del carrito',
+                'itemCount' => $carrito->getItemCount($this->db),
+                'total'     => $carrito->getTotal($this->db)
             ]);
         } else {
             $this->jsonResponse(['success' => false, 'error' => 'Error al eliminar producto'], 500);
         }
     }
-    
-    // Vaciar carrito
+
+    // Vaciar carrito (JSON)
     public function emptyCart() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             $this->jsonResponse(['success' => false, 'error' => 'No autorizado'], 401);
-            return;
         }
-        
-        $userId = $_SESSION['user_id'];
-        $carrito = Carrito::getActive($this->db, $userId);
-        
-        // Vaciar carrito
+
+        $carrito = Carrito::getActive($this->db, $_SESSION['user_id']);
         $success = ItemCarrito::emptyCart($this->db, $carrito->id_carrito);
-        
+
         if ($success) {
             $this->jsonResponse([
                 'success' => true,
@@ -244,115 +204,86 @@ class CarritoController {
             $this->jsonResponse(['success' => false, 'error' => 'Error al vaciar carrito'], 500);
         }
     }
-    
-    // Finalizar compra
+
+    // Mostrar página de checkout
     public function checkout() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             header('Location: /login');
             exit;
         }
-        
-        $userId = $_SESSION['user_id'];
+
+        $userId  = $_SESSION['user_id'];
         $carrito = Carrito::getActive($this->db, $userId);
-        $items = $carrito->getItems($this->db);
-        
+        $items   = $carrito->getItems($this->db);
+
         if (empty($items)) {
             $_SESSION['mensaje'] = [
-                'tipo' => 'warning',
+                'tipo'  => 'warning',
                 'texto' => 'Tu carrito está vacío'
             ];
             header('Location: /carrito');
             exit;
         }
-        
-        // En un sistema real, aquí se procesaría el pago, se actualizaría el stock, etc.
-        // Para este ejemplo, sólo mostraremos la página de confirmación
-        
+
         $total = $carrito->getTotal($this->db);
-        
-        // Incluir vista
+
         include __DIR__ . '/../views/header.php';
         include __DIR__ . '/../views/checkout.php';
         include __DIR__ . '/../views/footer.php';
     }
-    
+
     // Confirmar compra (procesar pago)
     public function confirmCheckout() {
-        // Verificar que el usuario está autenticado
         if (empty($_SESSION['user_id'])) {
             header('Location: /login');
             exit;
         }
-        
-        $userId = $_SESSION['user_id'];
+
+        $userId  = $_SESSION['user_id'];
         $carrito = Carrito::getActive($this->db, $userId);
-        $items = $carrito->getItems($this->db);
-        
+        $items   = $carrito->getItems($this->db);
+
         if (empty($items)) {
             $_SESSION['mensaje'] = [
-                'tipo' => 'warning',
+                'tipo'  => 'warning',
                 'texto' => 'Tu carrito está vacío'
             ];
             header('Location: /carrito');
             exit;
         }
-        
-        // En un sistema real, aquí procesaríamos el pago con un gateway
-        // y crearíamos un registro de pedido en la base de datos
-        
-        // Por ahora, simplemente actualizamos el stock y cerramos el carrito
+
         $this->db->beginTransaction();
-        
         try {
-            // Actualizar stock
             foreach ($items as $item) {
-                $sql = "
+                $stmt = $this->db->prepare("
                     UPDATE Productos
                     SET stock = stock - :cantidad
                     WHERE id_producto = :id_producto
-                ";
-                $stmt = $this->db->prepare($sql);
+                ");
                 $stmt->execute([
-                    'cantidad' => $item->cantidad,
+                    'cantidad'    => $item->cantidad,
                     'id_producto' => $item->id_producto
                 ]);
             }
-            
-            // Finalizar carrito
+
             $carrito->finalize($this->db);
-            
-            // Confirmar transacción
             $this->db->commit();
-            
-            // Mostrar mensaje de éxito
+
             $_SESSION['mensaje'] = [
-                'tipo' => 'success',
+                'tipo'  => 'success',
                 'texto' => '¡Gracias por tu compra! Tu pedido ha sido procesado correctamente.'
             ];
-            
             header('Location: /catalogo');
             exit;
-            
+
         } catch (Exception $e) {
-            // Revertir cambios si hay error
             $this->db->rollBack();
-            
             $_SESSION['mensaje'] = [
-                'tipo' => 'danger',
+                'tipo'  => 'danger',
                 'texto' => 'Ha ocurrido un error al procesar tu pedido: ' . $e->getMessage()
             ];
-            
             header('Location: /carrito');
             exit;
         }
-    }
-    
-    // Helper para enviar respuestas JSON
-    private function jsonResponse(array $data, int $statusCode = 200) {
-        http_response_code($statusCode);
-        header('Content-Type: application/json');
-        echo json_encode($data);
-        exit;
     }
 }
