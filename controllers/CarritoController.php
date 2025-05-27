@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../models/Carrito.php';
 require_once __DIR__ . '/../models/ItemCarrito.php';
 require_once __DIR__ . '/../models/Producto.php';
+require_once __DIR__ . '/../models/users.php';
 
 class CarritoController {
     private PDO $db;
@@ -225,6 +226,15 @@ class CarritoController {
             exit;
         }
 
+        // Obtener datos del usuario para prellenar el formulario
+        $stmt = $this->db->prepare("
+            SELECT nombre, email, telefono, NIF, domicilio 
+            FROM Usuarios 
+            WHERE id_usuario = :id_usuario
+        ");
+        $stmt->execute(['id_usuario' => $userId]);
+        $usuario = $stmt->fetchObject();
+
         $total = $carrito->getTotal($this->db);
 
         include __DIR__ . '/../views/header.php';
@@ -236,6 +246,45 @@ class CarritoController {
     public function confirmCheckout() {
         if (empty($_SESSION['user_id'])) {
             header('Location: /login');
+            exit;
+        }
+
+        // Validar datos del formulario
+        $requiredFields = ['nombre', 'email', 'direccion', 'ciudad', 'codigo_postal', 'metodo_pago'];
+        $missingFields = [];
+        
+        foreach ($requiredFields as $field) {
+            if (empty($_POST[$field])) {
+                $missingFields[] = $field;
+            }
+        }
+        
+        if (!empty($missingFields)) {
+            $_SESSION['mensaje'] = [
+                'tipo'  => 'danger',
+                'texto' => 'Faltan campos obligatorios: ' . implode(', ', $missingFields)
+            ];
+            header('Location: /checkout');
+            exit;
+        }
+
+        // Validar términos y condiciones
+        if (empty($_POST['terminos'])) {
+            $_SESSION['mensaje'] = [
+                'tipo'  => 'danger',
+                'texto' => 'Debes aceptar los términos y condiciones para continuar'
+            ];
+            header('Location: /checkout');
+            exit;
+        }
+
+        // Validar formato del código postal
+        if (!preg_match('/^\d{5}$/', $_POST['codigo_postal'])) {
+            $_SESSION['mensaje'] = [
+                'tipo'  => 'danger',
+                'texto' => 'El código postal debe tener exactamente 5 dígitos'
+            ];
+            header('Location: /checkout');
             exit;
         }
 
@@ -254,6 +303,18 @@ class CarritoController {
 
         $this->db->beginTransaction();
         try {
+            // Verificar stock antes de procesar
+            foreach ($items as $item) {
+                $stmt = $this->db->prepare("SELECT stock FROM Productos WHERE id_producto = :id");
+                $stmt->execute(['id' => $item->id_producto]);
+                $producto = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$producto || $producto['stock'] < $item->cantidad) {
+                    throw new Exception("Stock insuficiente para el producto: " . $item->producto->nombre);
+                }
+            }
+
+            // Actualizar stock
             foreach ($items as $item) {
                 $stmt = $this->db->prepare("
                     UPDATE Productos
@@ -266,13 +327,51 @@ class CarritoController {
                 ]);
             }
 
+            // Actualizar datos del usuario si han cambiado
+            $stmt = $this->db->prepare("
+                UPDATE Usuarios 
+                SET nombre = :nombre, 
+                    telefono = :telefono, 
+                    NIF = :nif, 
+                    domicilio = :domicilio
+                WHERE id_usuario = :id_usuario
+            ");
+            $stmt->execute([
+                'nombre'     => $_POST['nombre'],
+                'telefono'   => $_POST['telefono'] ?? null,
+                'nif'        => $_POST['nif'] ?? null,
+                'domicilio'  => $_POST['direccion'],
+                'id_usuario' => $userId
+            ]);
+
+            // Aquí podrías crear una tabla de pedidos para guardar la información completa del pedido
+            // Por ahora solo finalizamos el carrito
             $carrito->finalize($this->db);
+            
             $this->db->commit();
+
+            // Preparar mensaje de confirmación personalizado
+            $metodoPago = $this->getMetodoPagoTexto($_POST['metodo_pago']);
+            $mensajeConfirmacion = "¡Gracias por tu compra, " . htmlspecialchars($_POST['nombre']) . "! ";
+            $mensajeConfirmacion .= "Tu pedido ha sido procesado correctamente. ";
+            $mensajeConfirmacion .= "Método de pago seleccionado: " . $metodoPago . ". ";
+            
+            if ($_POST['metodo_pago'] === 'transferencia') {
+                $mensajeConfirmacion .= "Recibirás un email con los datos bancarios para realizar la transferencia.";
+            } else {
+                $mensajeConfirmacion .= "Recibirás un email de confirmación en breve.";
+            }
 
             $_SESSION['mensaje'] = [
                 'tipo'  => 'success',
-                'texto' => '¡Gracias por tu compra! Tu pedido ha sido procesado correctamente.'
+                'texto' => $mensajeConfirmacion
             ];
+            
+            // Si hay newsletter, aquí podrías procesarla
+            if (!empty($_POST['newsletter'])) {
+                // Lógica para suscribir al newsletter
+            }
+            
             header('Location: /catalogo');
             exit;
 
@@ -282,8 +381,24 @@ class CarritoController {
                 'tipo'  => 'danger',
                 'texto' => 'Ha ocurrido un error al procesar tu pedido: ' . $e->getMessage()
             ];
-            header('Location: /carrito');
+            header('Location: /checkout');
             exit;
+        }
+    }
+
+    /**
+     * Helper para obtener el texto del método de pago
+     */
+    private function getMetodoPagoTexto($metodo) {
+        switch ($metodo) {
+            case 'tarjeta':
+                return 'Tarjeta de crédito/débito';
+            case 'transferencia':
+                return 'Transferencia bancaria';
+            case 'paypal':
+                return 'PayPal';
+            default:
+                return 'Método desconocido';
         }
     }
 }
